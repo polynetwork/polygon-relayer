@@ -29,6 +29,7 @@ import (
 
 	sdk "github.com/polynetwork/poly-go-sdk"
 	"github.com/polynetwork/polygon-relayer/cosmos-sdk/codec"
+	"github.com/polynetwork/polygon-relayer/manager"
 	sdkp "github.com/polynetwork/polygon-relayer/poly_go_sdk"
 
 	"github.com/polynetwork/polygon-relayer/cmd"
@@ -37,7 +38,8 @@ import (
 	"github.com/polynetwork/polygon-relayer/cosmos-relayer/service"
 	"github.com/polynetwork/polygon-relayer/db"
 	"github.com/polynetwork/polygon-relayer/log"
-	"github.com/polynetwork/polygon-relayer/manager"
+
+	"github.com/polynetwork/polygon-relayer/global"
 
 	rpcclient "github.com/christianxiao/tendermint/rpc/client"
 )
@@ -105,6 +107,8 @@ func startServer(ctx *cli.Context) {
 		return
 	}
 
+	global.ServiceConfig = servConfig
+
 	if servConfig.ETHConfig.StartHeight > 0 {
 		StartHeight = servConfig.ETHConfig.StartHeight
 	}
@@ -116,7 +120,7 @@ func startServer(ctx *cli.Context) {
 		log.Errorf("startServer - failed to setup poly sdk: %v", err)
 		return
 	}
-	polySdkp := sdkp.NewPolySdkp(polySdk, testLocal)
+	global.PolySdkp = sdkp.NewPolySdkp(polySdk, testLocal)
 
 	// create ethereum sdk
 	ethereumsdk, err := ethclient.Dial(servConfig.ETHConfig.RestURL)
@@ -125,6 +129,7 @@ func startServer(ctx *cli.Context) {
 		log.Errorf("startServer - cannot dial sync node, err: %s", err)
 		return
 	}
+	global.Ethereumsdk = ethereumsdk
 
 	var boltDB *db.BoltDB
 	if servConfig.BoltDbPath == "" {
@@ -136,21 +141,25 @@ func startServer(ctx *cli.Context) {
 		log.Fatalf("db.NewWaitingDB error:%s", err)
 		return
 	}
+	global.Db = boltDB
 
+	// heimdall client
 	tclient := rpcclient.NewHTTP(servConfig.TendermintConfig.CosmosRpcAddr, "/websocket")
 	tclient.Start()
+	global.Rpcclient = tclient
 
 	// init heimdall service
 	// all tools and info hold by context object.
-	if err = cosctx.InitCtx(servConfig.TendermintConfig, boltDB, polySdkp, tclient); err != nil {
+	if err = cosctx.InitCtx(servConfig.TendermintConfig, boltDB, global.PolySdkp, tclient); err != nil {
 		log.Fatalf("failed to init context: %v", err)
 		panic(err)
 	}
+
 	service.StartListen()
 	service.StartRelay()
 
-	initPolyServer(servConfig, polySdkp, ethereumsdk, boltDB, nofeemode)
-	initETHServer(servConfig, polySdkp, ethereumsdk, boltDB, cosctx.RCtx.CMCdc, tclient)
+	initPolyServer(servConfig, global.PolySdkp, ethereumsdk, boltDB, nofeemode)
+	initETHServer(servConfig, global.PolySdkp, ethereumsdk, boltDB, cosctx.RCtx.CMCdc, tclient)
 	waitToExit()
 }
 
@@ -190,6 +199,7 @@ func initETHServer(servConfig *config.ServiceConfig, polysdk *sdkp.PolySdk, ethe
 	go mgr.TendermintClient.MonitorSpanHisRoutine(uint64(servConfig.TendermintConfig.SpanStart))
 
 	go mgr.MonitorChain()
+	
 	go mgr.MonitorDeposit()
 	go mgr.CheckDeposit()
 }

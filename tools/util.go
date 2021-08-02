@@ -102,6 +102,21 @@ type blockRsp struct {
 	Id      uint          `json:"id"`
 }
 
+func HexReverse(arr []byte) []byte {
+	l := len(arr)
+	x := make([]byte, 0)
+	for i := l - 1; i >= 0; i-- {
+		x = append(x, arr[i])
+	}
+	return x
+}
+
+func HexStringReverse(value string) string {
+	aa, _ := hex.DecodeString(value)
+	bb := HexReverse(aa)
+	return hex.EncodeToString(bb)
+}
+
 // Uint64ToBigEndian - marshals uint64 to a bigendian byte slice so it can be sorted
 func Uint64ToBigEndian(i uint64) []byte {
 	b := make([]byte, 8)
@@ -302,7 +317,6 @@ func GetExplorerUrl(chainId uint64) string {
 		return "no url"
 	}
 }
-
 
 func GetEthNoCompressKey(key keypair.PublicKey) []byte {
 	var buf bytes.Buffer

@@ -123,7 +123,6 @@ func NewServiceConfig(configFilePath string) *ServiceConfig {
 	servConfig.TendermintConfig.PolyWallet = servConfig.PolyConfig.WalletFile
 	servConfig.TendermintConfig.PolyWalletPwd = servConfig.PolyConfig.WalletPwd
 
-
 	for k, v := range servConfig.ETHConfig.KeyStorePwdSet {
 		delete(servConfig.ETHConfig.KeyStorePwdSet, k)
 		servConfig.ETHConfig.KeyStorePwdSet[strings.ToLower(k)] = v

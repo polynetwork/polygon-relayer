@@ -66,8 +66,7 @@ func CosmosListen() {
 		select {
 		case <-tick.C:
 			status, err := ctx.CMRpcCli.Status()
-			log.LogTender.Infof("[ListenCosmos] status: left: %d, status: %d", left, status.SyncInfo.LatestBlockHeight)
-
+		
 			switch {
 			case err != nil:
 				log.LogTender.Errorf("[ListenCosmos] failed to get height of COSMOS, retry after %d sec: %v",
@@ -76,10 +75,13 @@ func CosmosListen() {
 			case status.SyncInfo.LatestBlockHeight-1 <= lastRight:
 				continue
 			}
-			right := status.SyncInfo.LatestBlockHeight - 1
-			log.LogTender.Infof("[ListenCosmos] CosmosListen left: %d, right: %d", left, right)
 
-			hdr, err := getCosmosHdr(right)
+			log.LogTender.Infof("[ListenCosmos] status: left: %d, status: %d, diff: %d", left, status.SyncInfo.LatestBlockHeight, status.SyncInfo.LatestBlockHeight-left)
+			right := status.SyncInfo.LatestBlockHeight - 1
+			log.LogTender.Infof("[ListenCosmos] CosmosListen left: %d, right: %d, diff: %d", left, right, right-left)
+
+			//var hdr *cosmos.CosmosHeader
+/* 			hdr, err := getCosmosHdr(right)
 			if err != nil {
 				log.LogTender.Errorf("[ListenCosmos] failed to get %d header to get proof, retry after %d sec: %v",
 					right, ctx.Conf.CosmosListenInterval, err)
@@ -91,7 +93,7 @@ func CosmosListen() {
 				log.LogTender.Infof("[ListenCosmos] header at %d is epoch switching point, so continue loop", hdr.Header.Height)
 				lastRight = right
 				continue
-			}
+			} */
 
 			// let first element of infoArr be the info for epoch switching headers.
 			infoArr := &context.CosmosInfo{
@@ -100,9 +102,9 @@ func CosmosListen() {
 			}
 
 			for h := left + 1; h <= right; h++ {
-				infoArrTemp, err := checkCosmosHeight(h, hdr, infoArr)
+				infoArrTemp, err := checkCosmosHeight(h, infoArr)
 				if err != nil {
-					log.LogTender.Errorf("[ListenCosmos] checkCosmosHeight error: height: %s right: %s error: %w", h, right, err)
+					log.LogTender.Errorf("[ListenCosmos] checkCosmosHeight error: height: %d right: %d error: %w", h, right, err)
 					// If error happen, we should check this height again.
 					h--
 					if strings.Contains(err.Error(), context.RightHeightUpdate) {
@@ -111,8 +113,8 @@ func CosmosListen() {
 						continue
 					}
 					// some error happen, could be some network error or COSMOS full node error.
-					log.LogTender.Errorf("[ListenCosmos] failed to fetch info from COSMOS, retry after 10 sec: %s", err)
-					context.SleepSecs(10)
+					log.LogTender.Errorf("[ListenCosmos] failed to fetch info from COSMOS, retry after 3 sec: %s", err)
+					context.SleepSecs(3)
 					continue
 				}
 				infoArr = infoArrTemp
@@ -164,10 +166,10 @@ func GetBestCosmosHeightForBor() (int64, error) {
 		return 0, err
 	}
 
-	log.LogTender.Infof("beforeCosmosListen, ( cosmos height on Poly: %d )", currHeight)
+	log.LogTender.Infof("GetBestCosmosHeightForBor, ( cosmos height on Poly: %d )", currHeight)
 
 	if dbh := ctx.Db.GetCosmosHeight(); dbh > currHeight {
-		log.LogTender.Infof("beforeCosmosListen, ( cosmos height in DB: %d )", dbh)
+		log.LogTender.Infof("GetBestCosmosHeightForBor, ( cosmos height in DB: %d )", dbh)
 		currHeight = dbh
 	}
 	
@@ -216,7 +218,7 @@ func GetCosmosHeightFromPoly() (int64, error) {
 // Put header to `hdrArr` and txs to `txArr`. Get proof from height `heightToGetProof`.
 // `headersToRelay` record all hdrs need to relay. When need to update new height to
 // get proof, relayer update `rightPtr` and return.
-func checkCosmosHeight(h int64, hdrToVerifyProof *cosmos.CosmosHeader, infoArr *context.CosmosInfo) (*context.CosmosInfo, error) {
+func checkCosmosHeight(h int64, infoArr *context.CosmosInfo) (*context.CosmosInfo, error) {
 	rc, err := ctx.CMRpcCli.Commit(&h)
 	if err != nil {
 		return infoArr, err
@@ -255,14 +257,13 @@ func getValidators(h int64) ([]*tdmt_types.Validator, error) {
 
 	// TODO: this changed!, don't know how to get full validators, only return first 100
 	res, err := ctx.CMRpcCli.Validators(&h)
-	log.LogTender.Infof("cosmos getValidators - height: %d, validators: %d ", h, len(res.Validators))
-
 	if err != nil {
 		if strings.Contains(err.Error(), "page should be within") {
 			return vSet, nil
 		}
 		return nil, err
 	}
+	log.LogTender.Infof("cosmos getValidators - height: %d, validators: %d ", h, len(res.Validators))
 	// In case tendermint don't give relayer the right error
 	if len(res.Validators) == 0 {
 		return vSet, nil
